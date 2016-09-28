@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 )
 
 const (
 	CONN_HOST = "localhost"
 	CONN_PORT = "8081"
 	CONN_TYPE = "tcp"
+	LOADSAVE  = "LoadSave"
 )
 
 func main() {
@@ -47,9 +49,18 @@ func handleRequest(conn net.Conn) {
 	}
 	
 	text = append(text, buf[:reqLen]...)
-
-	fmt.Print("Message received: " + string(text))
-
+	if (strings.Contains(string(text), LOADSAVE)) {
+		fmt.Println("Getting Save File")
+		
+		reqLen, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("Error reading:", err.Error())
+		}
+		text = append(text, buf[:reqLen]...)
+	} else {
+		fmt.Print("Message received: " + string(text))
+	}
+	
 	// Send a response back to person contacting us.
 	conn.Write([]byte(string(text)))
 	
