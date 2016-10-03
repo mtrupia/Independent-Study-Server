@@ -1,10 +1,11 @@
 package main
 
 import (
+    "io/ioutil"
 	"fmt"
 	"net"
 	"os"
-	"strings"
+	"encoding/json"
 )
 
 const (
@@ -14,7 +15,37 @@ const (
 	LOADSAVE  = "LoadSave"
 )
 
+type Field struct {
+	Blocks [][]struct {
+		Height int `json:"height"`
+		ID     int `json:"id"`
+		Width  int `json:"width"`
+		X      int `json:"x"`
+		Y      int `json:"y"`
+	} `json:"blocks"`
+	Border struct {
+		Height int `json:"height"`
+		ID     int `json:"id"`
+		Width  int `json:"width"`
+		X      int `json:"x"`
+		Y      int `json:"y"`
+	} `json:"border"`
+}
+
+func jsonStuff() {
+	dat, _ := ioutil.ReadFile("test.txt")
+	bytes := []byte(string(dat))
+	var field Field
+	json.Unmarshal(bytes, &field)
+	
+	b, _ := json.Marshal(field)
+	s := string(b)
+	fmt.Println(s)
+}
+
+
 func main() {
+	jsonStuff()
 	// Listen for incoming connections.
 	l, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
 	if err != nil {
@@ -49,17 +80,7 @@ func handleRequest(conn net.Conn) {
 	}
 	
 	text = append(text, buf[:reqLen]...)
-	if (strings.Contains(string(text), LOADSAVE)) {
-		fmt.Println("Getting Save File")
-		
-		reqLen, err := conn.Read(buf)
-		if err != nil {
-			fmt.Println("Error reading:", err.Error())
-		}
-		text = append(text, buf[:reqLen]...)
-	} else {
-		fmt.Print("Message received: " + string(text))
-	}
+	fmt.Print("Message received: " + string(text))
 	
 	// Send a response back to person contacting us.
 	conn.Write([]byte(string(text)))
