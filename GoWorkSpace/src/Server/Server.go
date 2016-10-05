@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"encoding/json"
+	"strings"
 )
 
 const (
@@ -15,37 +16,36 @@ const (
 	LOADSAVE  = "LoadSave"
 )
 
-type Field struct {
-	Blocks [][]struct {
-		Height int `json:"height"`
-		ID     int `json:"id"`
-		Width  int `json:"width"`
-		X      int `json:"x"`
-		Y      int `json:"y"`
-	} `json:"blocks"`
-	Border struct {
-		Height int `json:"height"`
-		ID     int `json:"id"`
-		Width  int `json:"width"`
-		X      int `json:"x"`
-		Y      int `json:"y"`
-	} `json:"border"`
-}
+type Block struct {
+	ID int `json:"id"`
+	X int `json:"x"`
+	Y int `json:"y"`
+	Width int `json:"width"`
+	Height int `json:"height"`
+} 
 
-func jsonStuff() {
-	dat, _ := ioutil.ReadFile("test.txt")
-	bytes := []byte(string(dat))
-	var field Field
-	json.Unmarshal(bytes, &field)
+func jsonStuff() []byte {
+	fmt.Println("getting file")
+	dat, err := ioutil.ReadFile("C:/Independent-Study-Server/GoWorkSpace/src/Server/test.txt")
 	
-	b, _ := json.Marshal(field)
-	s := string(b)
-	fmt.Println(s)
+	if err != nil {
+		fmt.Print(err)
+	} else {
+		fmt.Println("Got file")
+	}
+	
+	bytes := []byte(string(dat))
+	var blocks[][] Block
+	json.Unmarshal(bytes, &blocks)
+	
+	
+	fmt.Println("getting json")
+	b, _ := json.Marshal(blocks)
+	fmt.Println("returning json")
+	return b
 }
-
 
 func main() {
-	jsonStuff()
 	// Listen for incoming connections.
 	l, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
 	if err != nil {
@@ -82,8 +82,13 @@ func handleRequest(conn net.Conn) {
 	text = append(text, buf[:reqLen]...)
 	fmt.Print("Message received: " + string(text))
 	
-	// Send a response back to person contacting us.
-	conn.Write([]byte(string(text)))
+	if strings.Contains(string(text), "json") {
+		conn.Write(jsonStuff())
+		fmt.Println("Sent json to client")
+	} else {
+		// Send a response back to person contacting us.
+		conn.Write([]byte(string(text)))
+	}
 	
 	conn.Close()
 }
