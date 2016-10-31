@@ -1,7 +1,7 @@
 package main
 
 import (
-    "io/ioutil"
+	"testing"
 	"fmt"
 	"net"
 	"os"
@@ -14,81 +14,245 @@ const (
 	CONN_PORT = "8081"
 	CONN_TYPE = "tcp"
 	LOADSAVE  = "LoadSave"
+	WIDTH = 23
+	HEIGHT = 18
 )
 
-type Block struct {
-	ID int `json:"id"`
-	X int `json:"x"`
-	Y int `json:"y"`
-	Width int `json:"width"`
-	Height int `json:"height"`
-} 
-
-func jsonStuff() []byte {
-	fmt.Println("getting file")
-	dat, err := ioutil.ReadFile("C:/Independent-Study-Server/GoWorkSpace/src/Server/test.txt")
-	
-	if err != nil {
-		fmt.Print(err)
-	} else {
-		fmt.Println("Got file")
-	}
-	
-	bytes := []byte(string(dat))
-	var blocks[][] Block
-	json.Unmarshal(bytes, &blocks)
-	
-	
-	fmt.Println("getting json")
-	b, _ := json.Marshal(blocks)
-	fmt.Println("returning json")
-	return b
-}
+var p Player
 
 func main() {
-	// Listen for incoming connections.
-	l, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
+	p.create(0, 20, 100, []int{})
+
+	listener, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
 	if err != nil {
-		fmt.Println("Error listening:", err.Error())
+		fmt.Println("Error opening server")
 		os.Exit(1)
 	}
-	// Close the listener when the application closes.
-	defer l.Close()
+	defer listener.Close()
 	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
 	for {
-		// Listen for an incoming connection.
-		conn, err := l.Accept()
+		connection, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Error accepting: ", err.Error())
+			fmt.Println("Error accepting connections")
 			os.Exit(1)
 		}
 		
-		// Handle connections in a new goroutine.
-		go handleRequest(conn)
+		go handleRequest(connection)
 	}
 }
 
-// Handles incoming requests.
 func handleRequest(conn net.Conn) {
-	// Make a buffer to hold incoming data.
 	buf := make([]byte, 1024)
 	text := make([]byte, 0, 4096)
-	// Read the incoming connection into the buffer.
-	reqLen, err := conn.Read(buf)
+	
+	size, err := conn.Read(buf)
 	if err != nil {
-		fmt.Println("Error reading:", err.Error())
+		fmt.Println("Error Reading: ", err.Error())
 	}
 	
-	text = append(text, buf[:reqLen]...)
-	fmt.Print("Message received: " + string(text))
+	text = append(text, buf[:size]...)
 	
 	if strings.Contains(string(text), "json") {
-		conn.Write(jsonStuff())
-		fmt.Println("Sent json to client")
+		b, _ := json.Marshal(p)
+		conn.Write([]byte(b))
+	} else if strings.Contains(string(text), "tower") {
+		p.buyTower(20, 5, 5, 0, 0)
+	} else if strings.Contains(string(text), "delete") {
+		p.sellTower(5, 5)
 	} else {
-		// Send a response back to person contacting us.
-		conn.Write([]byte(string(text)))
+		conn.Write([]byte("hi"))
 	}
 	
 	conn.Close()
+}
+
+type Enemy struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	Id int `json:"id"`
+	Health int `json:"health"`
+	Damage int `json:"damage"`
+}
+func (e * Enemy) create(id int) {
+	e.X = 5
+	e.Id = id
+	e.Health = id*50
+	e.Damage = id*10
+}
+func (e * Enemy) damage(t Tower) {
+	e.Health -= t.Damage
+}
+func (e Enemy) attack(t * Tower) {
+	t.damage(e)
+}
+func (e Enemy) isDead() bool {
+	return e.Health == 0
+}
+
+type Tower struct {
+	Id int `json:"id"`
+	Health int `json:"health"`
+	Damage int `json:"damage"`
+}
+func (t * Tower) create(id int) {
+	t.Id = id
+	t.Health = id*100
+	t.Damage = id*10
+}
+func (t * Tower) destroy() {
+	t.Id = 0
+	t.Health = 0
+	t.Damage = 0
+}
+func (t * Tower) damage(e Enemy) {
+	t.Health -= e.Damage
+}
+func (t Tower) attack(e * Enemy) {
+	e.damage(t)
+}
+func (t Tower) isDead() bool {
+	return (t.Health == 0)
+}
+
+type Board struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	Building Tower `json:"building"`
+}
+func (b * Board) create(x int, y int) {
+	b.X = x
+	b.Y = y
+}
+func (b Board) towerExists() bool {
+	return !b.Building.isDead()
+}
+
+type Player struct {
+	Score int `json:"score"`
+	Lives int `json:"lives"`
+	Gold int `json:"gold"`
+	Specials []int `json:"specials"`
+	Field [HEIGHT][WIDTH]Board `json:"field"`
+	Enemies []Enemy `json:"enemies"`
+}
+func (p * Player) moveEnemies(loc int) {
+	size := len(p.Enemies)
+	
+	if size != 0 && loc < size {
+		for i:= loc; i < size; i++ {
+			e := &p.Enemies[i] 
+		
+			e.Y ++
+			if e.Y == HEIGHT {
+				p.loseLife(p.Enemies[i])
+				p.moveEnemies(i)
+				break
+			}
+		}
+	}
+}
+func (p * Player) create(pnts int, life int, gold int, specs []int) {
+	p.Score = pnts
+	p.Lives = life
+	p.Gold = gold
+	p.Specials = specs
+}
+func (p Player) won(p1 Player) bool {
+	return p.Lives > p1.Lives
+}
+func (p Player) isDead() bool {
+	return (p.Lives == 0)
+}
+func (p * Player) buyTower(id int, x int, y int, xt int, yt int) {
+	towerCost := id
+	item := &p.Field[y][x]
+	
+	if !item.towerExists() {
+		if p.Gold >= towerCost {
+			item.create(xt, yt)
+			item.Building.create(id)
+		
+			p.spendGold(towerCost)
+		}
+	}
+}
+func (p * Player) sellTower(x int, y int) {
+	b := &p.Field[y][x]
+	
+	if b.towerExists() {
+		towerCost := b.Building.Id * 25
+		
+		p.addGold(towerCost)
+		
+		b.Building.destroy()
+	}
+}
+func (p * Player) addPoints(h int) {
+	p.Score += h
+}
+func (p * Player) losePoints(h int) {
+	p.Score -= h
+	if p.Score < 0 { p.Score = 0 }
+}
+func (p * Player) loseLife(e Enemy) {
+	p.Lives --
+	if p.Lives < 0 { p.Lives = 0 }
+	
+	p.losePoints(e.Id * 300)
+	
+	p.killEnemy(e, false)
+}
+func (p * Player) addGold(h int) {
+	p.Gold += h
+}
+func (p * Player) spendGold(h int) {
+	p.Gold -= h
+	if p.Gold < 0 { p.Gold = 0 }
+}
+func (p * Player) addSpecial(h int) {
+	p.Specials = append(p.Specials, h)
+}
+func (p * Player) useSpecial(h int) {
+	p.Specials = append(p.Specials[:h], p.Specials[h+1:]...)
+}
+func (p * Player) buyEnemy(p1 * Player, id int) {
+	enemyCost := id * 10
+	
+	if p.Gold >= enemyCost {
+		var e Enemy
+		e.create(id)
+	
+		p1.Enemies = append(p1.Enemies, e)
+		
+		p.spendGold(enemyCost)
+		p.addPoints(enemyCost * 10)
+	}
+}
+func (p * Player) killEnemy(e Enemy, pnts bool) {
+	h := p.getEnemyId(e)
+
+	if h < len(p.Enemies) && h >= 0 {
+		if pnts {
+			enemyCost := p.Enemies[h].Id * 20
+	
+			p.addGold(enemyCost)
+			p.addPoints(enemyCost * 10)
+		}
+	
+		p.Enemies = append(p.Enemies[:h], p.Enemies[h+1:]...)
+	}
+}
+func (p * Player) getEnemyId(e Enemy) int {
+	for i := 0; i < len(p.Enemies); i++ {
+		if p.Enemies[i] == e {
+			return i
+		}
+	}
+	return 0
+}
+
+func assert(b bool, s string, t *testing.T) {
+	if b {
+		t.Error(s)
+	}
 }
