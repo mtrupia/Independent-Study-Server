@@ -7,6 +7,7 @@ import (
 	"os"
 	"encoding/json"
 	"strings"
+	"strconv"
 )
 
 const (
@@ -14,14 +15,22 @@ const (
 	CONN_PORT = "8081"
 	CONN_TYPE = "tcp"
 	LOADSAVE  = "LoadSave"
+	NUM_GAMES = 1
+	NUM_PLAYERS = 2
 	WIDTH = 23
 	HEIGHT = 18
+	MAX_X = 100
+	MAX_Y = 544
+	BLOCK_SIZE = 32
 )
 
-var p Player
+var game [NUM_GAMES]Game
+var enemiesX, enemiesY int
 
 func main() {
-	p.create(0, 20, 100, []int{})
+	game[0].make()
+	enemiesX = 0
+	enemiesY = 1
 
 	listener, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
 	if err != nil {
@@ -36,7 +45,6 @@ func main() {
 			fmt.Println("Error accepting connections")
 			os.Exit(1)
 		}
-		
 		go handleRequest(connection)
 	}
 }
@@ -51,19 +59,104 @@ func handleRequest(conn net.Conn) {
 	}
 	
 	text = append(text, buf[:size]...)
+	s := string(text)
 	
-	if strings.Contains(string(text), "json") {
-		b, _ := json.Marshal(p)
-		conn.Write([]byte(b))
-	} else if strings.Contains(string(text), "tower") {
-		p.buyTower(20, 5, 5, 0, 0)
-	} else if strings.Contains(string(text), "delete") {
-		p.sellTower(5, 5)
+	if (strings.Contains(s, ":")) {
+		splits := strings.Split(s, ":")
+		id, _ := strconv.Atoi(splits[0])
+		
+		if !isIdUsed(id) {
+			for i:=0; i < NUM_GAMES; i++ {
+				if game[i].needsPlayer() {
+					game[i].addPlayer(id)
+					break
+				}
+			}
+		}
+	
+		if strings.Contains(s, ":game") {
+			b, _ := json.Marshal(getPlayerById(id))
+			getPlayerById(id).moveEnemies()
+			conn.Write([]byte(b))
+		} else if strings.Contains(s, ":buytower:") {
+			towerid, _ := strconv.Atoi(splits[2])
+			y, _ := strconv.Atoi(splits[3])
+			x, _ := strconv.Atoi(splits[4])
+			getPlayerById(id).buyTower(towerid, x, y, 0, 0)
+		} else if strings.Contains(s, ":selltower:") {
+			y, _ := strconv.Atoi(splits[2])
+			x, _ := strconv.Atoi(splits[3])
+			getPlayerById(id).sellTower(x, y)
+		} else if strings.Contains(s, ":buyenemy:") {
+			enemyid, _ := strconv.Atoi(splits[2])
+			getPlayerById(id).buyEnemy(getPlayerEnemyById(id), enemyid)
+		} else {
+			conn.Write([]byte("hi"))
+		}
 	} else {
 		conn.Write([]byte("hi"))
 	}
 	
 	conn.Close()
+}
+
+type Game struct {
+	Player[NUM_PLAYERS] *Player
+	Id[NUM_PLAYERS] int
+}
+func isIdUsed(id int) bool {
+	for i:=0;i<NUM_GAMES;i++ {
+		if game[i].Id[0] == id {
+			return true
+		} else if game[i].Id[1] == id {
+			return true
+		}
+	}
+	return false
+}
+func (g * Game) addPlayer(id int) {
+	if g.Id[0] == 0 {
+		g.Id[0] = id
+	} else if g.Id[1] == 0 {
+		g.Id[1] = id
+	}
+}
+func (g * Game) needsPlayer() bool{
+	if g.Id[0] == 0 {
+		return true
+	} else if g.Id[1] == 0 {
+		return true
+	}
+	return false
+}
+func (g * Game) make() {
+	var p1, p2 Player
+	p1.create(0,20,100000,[]int{})
+	p2.create(0, 20, 100000, []int{})
+	g.Player[0] = &p1
+	g.Player[1] = &p2
+	g.Id[0] = 0
+	g.Id[1] = 0
+}
+func getPlayerById(id int) * Player {
+	for i:=0;i<NUM_GAMES;i++ {
+		if game[i].Id[0] == id {
+			return game[i].Player[0]
+		} else if game[i].Id[1] == id {
+			return game[i].Player[1]
+		}
+	}
+	return nil
+}
+func getPlayerEnemyById(id int) * Player {
+	for i:=0;i<NUM_GAMES;i++ {
+		if game[i].Id[0] == id {
+			return game[i].Player[1]
+		} else if game[i].Id[1] == id {
+			return game[i].Player[0]
+		}
+	}
+	return nil
 }
 
 type Enemy struct {
@@ -74,7 +167,8 @@ type Enemy struct {
 	Damage int `json:"damage"`
 }
 func (e * Enemy) create(id int) {
-	e.X = 5
+	e.X = 0
+	e.Y = 0
 	e.Id = id
 	e.Health = id*50
 	e.Damage = id*10
@@ -135,18 +229,22 @@ type Player struct {
 	Field [HEIGHT][WIDTH]Board `json:"field"`
 	Enemies []Enemy `json:"enemies"`
 }
-func (p * Player) moveEnemies(loc int) {
+func (p * Player) moveEnemies() {
 	size := len(p.Enemies)
 	
-	if size != 0 && loc < size {
-		for i:= loc; i < size; i++ {
+	if size != 0 {
+		for i:= 0; i < size; i++ {
 			e := &p.Enemies[i] 
 		
-			e.Y ++
-			if e.Y == HEIGHT {
+			e.X += enemiesX
+			e.Y += enemiesY
+			
+			if e.Y == MAX_Y && e.X == 0 {
 				p.loseLife(p.Enemies[i])
-				p.moveEnemies(i)
+				p.moveEnemies()
 				break
+			} else {
+				
 			}
 		}
 	}
@@ -164,7 +262,7 @@ func (p Player) isDead() bool {
 	return (p.Lives == 0)
 }
 func (p * Player) buyTower(id int, x int, y int, xt int, yt int) {
-	towerCost := id
+	towerCost := (id-19) * 50
 	item := &p.Field[y][x]
 	
 	if !item.towerExists() {
@@ -180,7 +278,7 @@ func (p * Player) sellTower(x int, y int) {
 	b := &p.Field[y][x]
 	
 	if b.towerExists() {
-		towerCost := b.Building.Id * 25
+		towerCost := (b.Building.Id-19) * 25
 		
 		p.addGold(towerCost)
 		
