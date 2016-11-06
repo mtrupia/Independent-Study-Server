@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 	"strconv"
+	"time"
 )
 
 const (
@@ -28,7 +29,9 @@ var game [NUM_GAMES]Game
 var enemiesX, enemiesY int
 
 func main() {
-	game[0].make()
+	for i:=0; i < NUM_GAMES; i++ {
+		game[i].make()
+	}
 	enemiesX = 0
 	enemiesY = 1
 
@@ -39,6 +42,7 @@ func main() {
 	}
 	defer listener.Close()
 	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
+	go moveAllEnemies()
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
@@ -48,7 +52,6 @@ func main() {
 		go handleRequest(connection)
 	}
 }
-
 func handleRequest(conn net.Conn) {
 	buf := make([]byte, 1024)
 	text := make([]byte, 0, 4096)
@@ -76,7 +79,6 @@ func handleRequest(conn net.Conn) {
 	
 		if strings.Contains(s, ":game") {
 			b, _ := json.Marshal(getPlayerById(id))
-			getPlayerById(id).moveEnemies()
 			conn.Write([]byte(b))
 		} else if strings.Contains(s, ":buytower:") {
 			towerid, _ := strconv.Atoi(splits[2])
@@ -98,6 +100,29 @@ func handleRequest(conn net.Conn) {
 	}
 	
 	conn.Close()
+}
+func moveAllEnemies() {
+	var UPDATES, UPDATEUNIT int64
+	UPDATES = 60
+	UPDATEUNIT = 1000000
+	executionStamp := time.Now().UnixNano() / UPDATEUNIT
+	for { 
+		now := time.Now().UnixNano() / UPDATEUNIT
+		difference := now - executionStamp
+		interval := 1000 / UPDATES
+		if (difference > interval) {
+			for i:=0;i<NUM_GAMES;i++ {
+				if len(game[i].Player[0].Enemies) != 0 {
+					game[i].Player[0].moveEnemies()
+				} 
+				if len(game[i].Player[1].Enemies) != 0 {
+					game[i].Player[1].moveEnemies()
+				}
+			}
+			
+			executionStamp = time.Now().UnixNano() / UPDATEUNIT
+		}
+	}
 }
 
 type Game struct {
@@ -254,6 +279,12 @@ func (p * Player) create(pnts int, life int, gold int, specs []int) {
 	p.Lives = life
 	p.Gold = gold
 	p.Specials = specs
+	for y:=0;y<HEIGHT;y++ {
+		for x:=0;x<WIDTH;x++ {
+			p.Field[y][x].X = x*BLOCK_SIZE
+			p.Field[y][x].Y = y*BLOCK_SIZE
+		}
+	}
 }
 func (p Player) won(p1 Player) bool {
 	return p.Lives > p1.Lives
