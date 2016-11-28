@@ -9,6 +9,7 @@ import (
 	"strings"
 	"strconv"
 	"time"
+	"math"
 )
 
 const (
@@ -26,14 +27,11 @@ const (
 )
 
 var game [NUM_GAMES]Game
-var enemiesX, enemiesY int
 
 func main() {
 	for i:=0; i < NUM_GAMES; i++ {
 		game[i].make()
 	}
-	enemiesX = 0
-	enemiesY = 1
 
 	listener, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
 	if err != nil {
@@ -42,7 +40,7 @@ func main() {
 	}
 	defer listener.Close()
 	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
-	go moveAllEnemies()
+	go moveAndAttack()
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
@@ -101,7 +99,7 @@ func handleRequest(conn net.Conn) {
 	
 	conn.Close()
 }
-func moveAllEnemies() {
+func moveAndAttack() {
 	var UPDATES, UPDATEUNIT int64
 	UPDATES = 60
 	UPDATEUNIT = 1000000
@@ -111,13 +109,12 @@ func moveAllEnemies() {
 		difference := now - executionStamp
 		interval := 1000 / UPDATES
 		if (difference > interval) {
+			// DO WORK
 			for i:=0;i<NUM_GAMES;i++ {
-				if len(game[i].Player[0].Enemies) != 0 {
-					game[i].Player[0].moveEnemies()
-				} 
-				if len(game[i].Player[1].Enemies) != 0 {
-					game[i].Player[1].moveEnemies()
-				}
+				game[i].Player[0].moveEnemies()
+				game[i].Player[0].towersAttack()
+				game[i].Player[1].moveEnemies()
+				game[i].Player[1].towersAttack()
 			}
 			
 			executionStamp = time.Now().UnixNano() / UPDATEUNIT
@@ -186,17 +183,21 @@ func getPlayerEnemyById(id int) * Player {
 
 type Enemy struct {
 	X int `json:"x"`
+	Dx int
 	Y int `json:"y"`
+	Dy int
 	Id int `json:"id"`
 	Health int `json:"health"`
 	Damage int `json:"damage"`
 }
 func (e * Enemy) create(id int) {
 	e.X = 0
+	e.Dx = 0
 	e.Y = 0
+	e.Dy = 1
 	e.Id = id
-	e.Health = id*50
-	e.Damage = id*10
+	e.Health = 50
+	e.Damage = 10
 }
 func (e * Enemy) damage(t Tower) {
 	e.Health -= t.Damage
@@ -215,8 +216,8 @@ type Tower struct {
 }
 func (t * Tower) create(id int) {
 	t.Id = id
-	t.Health = id*100
-	t.Damage = id*10
+	t.Health = (id-19)*100
+	t.Damage = (id-19)*10
 }
 func (t * Tower) destroy() {
 	t.Id = 0
@@ -254,22 +255,79 @@ type Player struct {
 	Field [HEIGHT][WIDTH]Board `json:"field"`
 	Enemies []Enemy `json:"enemies"`
 }
+func (p * Player) towersAttack() {
+	for y:=0;y<HEIGHT;y++ {
+		for x:=0;x<WIDTH;x++ {
+			tower := &p.Field[y][x]
+			if tower.towerExists() {
+				for i:=0;i<len(p.Enemies);i++ {
+					enemy := p.Enemies[i]
+					x1 := x
+					x2 := enemy.X + (BLOCK_SIZE*11)  / BLOCK_SIZE
+					y1 := y
+					y2 := enemy.Y / BLOCK_SIZE
+					if math.Sqrt(math.Pow((float64) (x2-x1),2)+math.Pow((float64) (y2-y1),2)) < 2 {
+						if enemy.isDead() {
+							p.killEnemy(enemy, true)
+						} else {
+							//tower.Building.attack(&p.Enemies[i])
+						}
+					}
+				}
+			}
+		}
+	}
+}
 func (p * Player) moveEnemies() {
 	size := len(p.Enemies)
 	
 	if size != 0 {
 		for i:= 0; i < size; i++ {
 			e := &p.Enemies[i] 
-		
-			e.X += enemiesX
-			e.Y += enemiesY
 			
+			//Start moving down
+			e.X += e.Dx
+			e.Y += e.Dy
+			
+			// If at the end, finish the enemy
 			if e.Y == MAX_Y && e.X == 0 {
 				p.loseLife(p.Enemies[i])
 				p.moveEnemies()
 				break
 			} else {
+				// Get exact enemy location in-game
+				eX := e.X + (BLOCK_SIZE*11)
+				eY := e.Y 
+				eMX := eX + BLOCK_SIZE
+				eMY := eY + BLOCK_SIZE
 				
+				for y:=0;y<HEIGHT;y++ {
+					for x:=0;x<WIDTH;x++ {
+						if p.Field[y][x].towerExists() {
+							// get exact tower location in-game
+							tX := x*BLOCK_SIZE
+							tY := y*BLOCK_SIZE
+							tMX := tX + BLOCK_SIZE
+							tMY := tY + BLOCK_SIZE
+							
+							
+							if (eMY >= tY) && (eMY <= tMY) && (eMX >= tX) && (eMX <= tMX) {
+								// Check down movement
+								e.Dy = -1
+								e.Dx = 0
+							} else if (eY >= tY) && (eY <= tMY) && (eMX >= tX) && (eMX <= tMX) {
+								// check up movement
+								e.Dy = 0
+								e.Dx = -1
+							} else if (eX >= tX) && (eX <= tMX) && (eY >= tY) && (eY <= tMY) {
+								print("left\n")
+								// check left movement
+								e.Dy = 0
+								e.Dx = 1
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -325,11 +383,15 @@ func (p * Player) losePoints(h int) {
 }
 func (p * Player) loseLife(e Enemy) {
 	p.Lives --
-	if p.Lives < 0 { p.Lives = 0 }
 	
 	p.losePoints(e.Id * 300)
 	
 	p.killEnemy(e, false)
+	
+	if p.Lives <= 0 { 
+		print("Game WON!.........\n")
+		os.Exit(1)
+	}
 }
 func (p * Player) addGold(h int) {
 	p.Gold += h
