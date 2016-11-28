@@ -21,7 +21,7 @@ const (
 	NUM_PLAYERS = 2
 	WIDTH = 23
 	HEIGHT = 18
-	MAX_X = 100
+	MAX_X = 704
 	MAX_Y = 544
 	BLOCK_SIZE = 32
 )
@@ -187,6 +187,7 @@ type Enemy struct {
 	Y int `json:"y"`
 	Dy int
 	Id int `json:"id"`
+	Direction string
 	Health int `json:"health"`
 	Damage int `json:"damage"`
 }
@@ -195,6 +196,7 @@ func (e * Enemy) create(id int) {
 	e.Dx = 0
 	e.Y = 0
 	e.Dy = 1
+	e.Direction = "DOWN"
 	e.Id = id
 	e.Health = 50
 	e.Damage = 10
@@ -296,10 +298,49 @@ func (p * Player) moveEnemies() {
 				break
 			} else {
 				// Get exact enemy location in-game
-				eX := e.X + (BLOCK_SIZE*11)
+				eX := e.X + (BLOCK_SIZE*11) 
 				eY := e.Y 
-				eMX := eX + BLOCK_SIZE
-				eMY := eY + BLOCK_SIZE
+				
+				// make sure enemy isnt off-screen
+				if (eX < 0) {
+					e.X -= e.Dx
+					eX = 0
+					e.Dy = 1
+					e.Dx = 0
+					e.Direction = "DOWN"
+				}
+				if (eX > MAX_X) {
+					e.X -= e.Dx
+					eX = MAX_X
+					e.Dy = 1
+					e.Dx = 0
+					e.Direction = "DOWN"
+				}
+				if (eY < 0) {
+					e.Y -= e.Dy
+					eY = 0
+					e.Dy = 0
+					e.Dx = -1
+					e.Direction = "LEFT"
+				}
+				if (eY > MAX_Y) {
+					if (eX < MAX_X/2) {
+						e.Y -= e.Dy
+						eY = MAX_Y
+						e.Dy = 0
+						e.Dx = 1
+						e.Direction = "RIGHT"
+					} else {
+						e.Y -= e.Dy
+						eY = MAX_Y
+						e.Dy = 0
+						e.Dx = -1
+						e.Direction = "LEFT"
+					}
+				}
+				
+				eMX := eX + BLOCK_SIZE 
+				eMY := eY + BLOCK_SIZE 
 				
 				for y:=0;y<HEIGHT;y++ {
 					for x:=0;x<WIDTH;x++ {
@@ -310,21 +351,38 @@ func (p * Player) moveEnemies() {
 							tMX := tX + BLOCK_SIZE
 							tMY := tY + BLOCK_SIZE
 							
-							
-							if (eMY >= tY) && (eMY <= tMY) && (eMX >= tX) && (eMX <= tMX) {
+							if (eMY >= tY) && (eMY <= tMY) && (eMX-1 >= tX) && (eMX-1 <= tMX) && (e.Direction == "DOWN") {
 								// Check down movement
+								e.Y -= e.Dy
 								e.Dy = -1
 								e.Dx = 0
-							} else if (eY >= tY) && (eY <= tMY) && (eMX >= tX) && (eMX <= tMX) {
+								e.Direction = "UP"
+							} else if (eY >= tY) && (eY <= tMY) && (eMX >= tX) && (eMX <= tMX) && (e.Direction == "UP") {
 								// check up movement
+								e.Y -= e.Dy
 								e.Dy = 0
 								e.Dx = -1
-							} else if (eX >= tX) && (eX <= tMX) && (eY >= tY) && (eY <= tMY) {
-								print("left\n")
+								e.Direction = "LEFT"
+							} else if (eX >= tX) && (eX <= tMX) && (eY >= tY) && (eY <= tMY) && (e.Direction == "LEFT") {
 								// check left movement
+								e.X -= e.Dx
 								e.Dy = 0
 								e.Dx = 1
-							}
+								e.Direction = "RIGHT"
+							} else if (eMX >= tX) && (eMX <= tMX) && (eY+1 >= tY) && (eY+1 <= tMY) && (e.Direction == "RIGHT") {
+								// check right movement
+								if eY >= MAX_Y-5 {
+									e.X -= e.Dx
+									e.Dy = -1
+									e.Dx = 0
+									e.Direction = "UP"
+								} else {
+									e.X -= e.Dx
+									e.Dy = 1
+									e.Dx = 0
+									e.Direction = "DOWN"
+								}
+							}	
 						}
 					}
 				}
