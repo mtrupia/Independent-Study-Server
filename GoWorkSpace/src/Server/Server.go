@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 	"math"
+	"Server/utils"
 )
 
 const (
@@ -40,7 +41,8 @@ func main() {
 	}
 	defer listener.Close()
 	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
-	go moveAndAttack()
+	go moveAll()
+	go attackAll()
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
@@ -99,7 +101,7 @@ func handleRequest(conn net.Conn) {
 	
 	conn.Close()
 }
-func moveAndAttack() {
+func moveAll() {
 	var UPDATES, UPDATEUNIT int64
 	UPDATES = 60
 	UPDATEUNIT = 1000000
@@ -111,10 +113,27 @@ func moveAndAttack() {
 		if (difference > interval) {
 			// DO WORK
 			for i:=0;i<NUM_GAMES;i++ {
-				game[i].Player[0].moveEnemies()
-				game[i].Player[0].towersAttack()
-				game[i].Player[1].moveEnemies()
-				game[i].Player[1].towersAttack()
+				go game[i].Player[0].moveEnemies()
+				go game[i].Player[1].moveEnemies()
+			}
+			
+			executionStamp = time.Now().UnixNano() / UPDATEUNIT
+		}
+	}
+}
+func attackAll() {
+	var UPDATES, UPDATEUNIT int64
+	UPDATES = 1
+	UPDATEUNIT = 1000000
+	executionStamp := time.Now().UnixNano() / UPDATEUNIT
+	for { 
+		now := time.Now().UnixNano() / UPDATEUNIT
+		difference := now - executionStamp
+		interval := 1000 / UPDATES
+		if (difference > interval) {
+			for i:=0;i<NUM_GAMES;i++ {
+				go game[i].Player[0].towersAttack()
+				go game[i].Player[1].towersAttack()
 			}
 			
 			executionStamp = time.Now().UnixNano() / UPDATEUNIT
@@ -183,20 +202,18 @@ func getPlayerEnemyById(id int) * Player {
 
 type Enemy struct {
 	X int `json:"x"`
-	Dx int
+	DX int
 	Y int `json:"y"`
-	Dy int
+	DY int
 	Id int `json:"id"`
-	Direction string
 	Health int `json:"health"`
 	Damage int `json:"damage"`
 }
 func (e * Enemy) create(id int) {
 	e.X = 0
-	e.Dx = 0
+	e.DX = 0
 	e.Y = 0
-	e.Dy = 1
-	e.Direction = "DOWN"
+	e.DY = 0
 	e.Id = id
 	e.Health = 50
 	e.Damage = 10
@@ -207,7 +224,7 @@ func (e * Enemy) damage(t Tower) {
 func (e Enemy) attack(t * Tower) {
 	t.damage(e)
 }
-func (e Enemy) isDead() bool {
+func (e * Enemy) isDead() bool {
 	return e.Health == 0
 }
 
@@ -256,6 +273,7 @@ type Player struct {
 	Specials []int `json:"specials"`
 	Field [HEIGHT][WIDTH]Board `json:"field"`
 	Enemies []Enemy `json:"enemies"`
+	Path	utils.Point
 }
 func (p * Player) towersAttack() {
 	for y:=0;y<HEIGHT;y++ {
@@ -263,16 +281,15 @@ func (p * Player) towersAttack() {
 			tower := &p.Field[y][x]
 			if tower.towerExists() {
 				for i:=0;i<len(p.Enemies);i++ {
-					enemy := p.Enemies[i]
-					x1 := x
-					x2 := enemy.X + (BLOCK_SIZE*11)  / BLOCK_SIZE
-					y1 := y
-					y2 := enemy.Y / BLOCK_SIZE
-					if math.Sqrt(math.Pow((float64) (x2-x1),2)+math.Pow((float64) (y2-y1),2)) < 2 {
+					enemy := &p.Enemies[i]
+					x1 := x*BLOCK_SIZE + BLOCK_SIZE/2
+					x2 := enemy.X + (BLOCK_SIZE*11) + BLOCK_SIZE/2
+					y1 := y*BLOCK_SIZE + BLOCK_SIZE/2
+					y2 := enemy.Y + BLOCK_SIZE/2
+					if math.Sqrt(math.Pow((float64) (x2-x1),2)+math.Pow((float64) (y2-y1),2)) < BLOCK_SIZE*2 {
+						tower.Building.attack(enemy)
 						if enemy.isDead() {
-							p.killEnemy(enemy, true)
-						} else {
-							//tower.Building.attack(&p.Enemies[i])
+							p.killEnemy(p.Enemies[i], true)
 						}
 					}
 				}
@@ -287,107 +304,49 @@ func (p * Player) moveEnemies() {
 		for i:= 0; i < size; i++ {
 			e := &p.Enemies[i] 
 			
-			//Start moving down
-			e.X += e.Dx
-			e.Y += e.Dy
+			//Start moving
+			e.X += e.DX
+			e.Y += e.DY
 			
-			// If at the end, finish the enemy
+			// If at the end, finish the enemy, else, update dx, dy
 			if e.Y == MAX_Y && e.X == 0 {
 				p.loseLife(p.Enemies[i])
-				p.moveEnemies()
 				break
 			} else {
-				// Get exact enemy location in-game
-				eX := e.X + (BLOCK_SIZE*11) 
-				eY := e.Y 
-				
-				// make sure enemy isnt off-screen
-				if (eX < 0) {
-					e.X -= e.Dx
-					eX = 0
-					e.Dy = 1
-					e.Dx = 0
-					e.Direction = "DOWN"
-				}
-				if (eX > MAX_X) {
-					e.X -= e.Dx
-					eX = MAX_X
-					e.Dy = 1
-					e.Dx = 0
-					e.Direction = "DOWN"
-				}
-				if (eY < 0) {
-					e.Y -= e.Dy
-					eY = 0
-					e.Dy = 0
-					e.Dx = -1
-					e.Direction = "LEFT"
-				}
-				if (eY > MAX_Y) {
-					if (eX < MAX_X/2) {
-						e.Y -= e.Dy
-						eY = MAX_Y
-						e.Dy = 0
-						e.Dx = 1
-						e.Direction = "RIGHT"
-					} else {
-						e.Y -= e.Dy
-						eY = MAX_Y
-						e.Dy = 0
-						e.Dx = -1
-						e.Direction = "LEFT"
-					}
-				}
-				
-				eMX := eX + BLOCK_SIZE 
-				eMY := eY + BLOCK_SIZE 
-				
-				for y:=0;y<HEIGHT;y++ {
-					for x:=0;x<WIDTH;x++ {
-						if p.Field[y][x].towerExists() {
-							// get exact tower location in-game
-							tX := x*BLOCK_SIZE
-							tY := y*BLOCK_SIZE
-							tMX := tX + BLOCK_SIZE
-							tMY := tY + BLOCK_SIZE
-							
-							if (eMY >= tY) && (eMY <= tMY) && (eMX-1 >= tX) && (eMX-1 <= tMX) && (e.Direction == "DOWN") {
-								// Check down movement
-								e.Y -= e.Dy
-								e.Dy = -1
-								e.Dx = 0
-								e.Direction = "UP"
-							} else if (eY >= tY) && (eY <= tMY) && (eMX >= tX) && (eMX <= tMX) && (e.Direction == "UP") {
-								// check up movement
-								e.Y -= e.Dy
-								e.Dy = 0
-								e.Dx = -1
-								e.Direction = "LEFT"
-							} else if (eX >= tX) && (eX <= tMX) && (eY >= tY) && (eY <= tMY) && (e.Direction == "LEFT") {
-								// check left movement
-								e.X -= e.Dx
-								e.Dy = 0
-								e.Dx = 1
-								e.Direction = "RIGHT"
-							} else if (eMX >= tX) && (eMX <= tMX) && (eY+1 >= tY) && (eY+1 <= tMY) && (e.Direction == "RIGHT") {
-								// check right movement
-								if eY >= MAX_Y-5 {
-									e.X -= e.Dx
-									e.Dy = -1
-									e.Dx = 0
-									e.Direction = "UP"
-								} else {
-									e.X -= e.Dx
-									e.Dy = 1
-									e.Dx = 0
-									e.Direction = "DOWN"
-								}
-							}	
-						}
-					}
+				if ( ((e.Y % 32) == 0 && e.DY != 0) || ((e.X % 32) == 0 && e.DX != 0 ) ) {
+					p.getEnemyDirection(e)
 				}
 			}
+			
+			
 		}
+	}
+}
+func (p Player) getEnemyDirection(e * Enemy) {
+	e.DX = 0
+	e.DY = 0
+	
+	// get actual enemy location for board x and y
+	enemyX := e.X + (BLOCK_SIZE*11)
+	enemyY := e.Y
+	enemyX /= 32
+	enemyY /= 32
+	
+	coords := p.Path
+	for coords.X-1 != enemyY || coords.Y-1 != enemyX {
+		coords = *coords.Parent
+	}
+	coords = *coords.Parent
+	
+	//print("[",coords.Y-1,":",coords.X-1,"], [",enemyX,":",enemyY,"]\n")
+	if enemyY < coords.X-1 {
+		e.DY = 1
+	} else if enemyY > coords.X-1 {
+		e.DY = -1
+	} else if enemyX < coords.Y-1 {
+		e.DX = 1
+	} else if enemyX > coords.Y-1 {
+		e.DX = -1
 	}
 }
 func (p * Player) create(pnts int, life int, gold int, specs []int) {
@@ -400,6 +359,22 @@ func (p * Player) create(pnts int, life int, gold int, specs []int) {
 			p.Field[y][x].X = x*BLOCK_SIZE
 			p.Field[y][x].Y = y*BLOCK_SIZE
 		}
+	}
+	p.getPath()
+}
+func (p * Player) getPath(){
+	var scene Scene
+	scene.initScene(p)
+	initAstar(&scene)
+	p.Path = findPath(&scene)
+}
+func parsePath(p utils.Point) {
+	// print path
+	print("[",p.X-1,":",p.Y-1,"], ")
+	if p.Parent != nil {
+		parsePath(*(p.Parent))
+	} else {
+		print("\n")
 	}
 }
 func (p Player) won(p1 Player) bool {
@@ -418,6 +393,8 @@ func (p * Player) buyTower(id int, x int, y int, xt int, yt int) {
 			item.Building.create(id)
 		
 			p.spendGold(towerCost)
+			
+			p.getPath()
 		}
 	}
 }
@@ -430,6 +407,8 @@ func (p * Player) sellTower(x int, y int) {
 		p.addGold(towerCost)
 		
 		b.Building.destroy()
+		
+		p.getPath()
 	}
 }
 func (p * Player) addPoints(h int) {
@@ -470,6 +449,7 @@ func (p * Player) buyEnemy(p1 * Player, id int) {
 	if p.Gold >= enemyCost {
 		var e Enemy
 		e.create(id)
+		p1.getEnemyDirection(&e)
 	
 		p1.Enemies = append(p1.Enemies, e)
 		

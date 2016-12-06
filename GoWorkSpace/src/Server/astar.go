@@ -1,57 +1,58 @@
 package main
 
 import (
-	"fmt"
-	"github.com/dyzdyz010/Golang-AStar/utils"
+	"Server/utils"
 	"math"
-	"os"
 )
 
-var origin, dest utils.Point
-var openList, closeList, path []utils.Point
+var origin, dest, path utils.Point
+var openList, closeList []utils.Point
 
 // Set the origin point
 func setOrig(s *Scene) {
-	origin = utils.Point{utils.GetRandInt(s.rows-2) + 1, utils.GetRandInt(s.cols-2) + 1, 0, 0, 0, nil}
-	if s.scene[origin.X][origin.Y] == ' ' {
-		s.scene[origin.X][origin.Y] = 'A'
-	} else {
-		setOrig(s)
-	}
+	origin = utils.Point{18, 12, 0, 0, 0, nil}
+	s.scene[origin.X][origin.Y] = 'A'
 }
 
-// Set the destination point
+// Set the destination point '
 func setDest(s *Scene) {
-	dest = utils.Point{utils.GetRandInt(s.rows-2) + 1, utils.GetRandInt(s.cols-2) + 1, 0, 0, 0, nil}
-
-	if s.scene[dest.X][dest.Y] == ' ' {
-		s.scene[dest.X][dest.Y] = 'B'
-	} else {
-		setDest(s)
-	}
+	dest = utils.Point{1, 12, 0, 0, 0, nil}
+	s.scene[dest.X][dest.Y] = 'B'
 }
 
 // Init origin, destination. Put the origin point into the openlist by the way
 func initAstar(s *Scene) {
+	openList = nil
+	closeList = nil
+	first = true
+
 	setOrig(s)
 	setDest(s)
 	openList = append(openList, origin)
 }
 
-func findPath(s *Scene) {
+func findPath(s *Scene) utils.Point{
 	current := getFMin()
 	addToCloseList(current, s)
 	walkable := getWalkable(current, s)
 	for _, p := range walkable {
 		addToOpenList(p)
 	}
+	
+	if  hasPath() {
+		findPath(s)
+	}
+	return path
+}
+
+func hasPath() bool {
+	if len(openList) == 0 {
+		return false
+	}
+	return true
 }
 
 func getFMin() utils.Point {
-	if len(openList) == 0 {
-		fmt.Println("No way!!!")
-		os.Exit(-1)
-	}
 	index := 0
 	for i, p := range openList {
 		if (i > 0) && (p.F <= openList[index].F) {
@@ -113,17 +114,15 @@ func updateWeight(p *utils.Point) {
 func removeFromOpenList(p utils.Point) {
 	index := findPoint(p, openList)
 	if index == -1 {
-		os.Exit(0)
 	}
 	openList = append(openList[:index], openList[index+1:]...)
 }
 
-func addToCloseList(p utils.Point, s *Scene) {
+func addToCloseList(p utils.Point, s *Scene){
 	removeFromOpenList(p)
 	if (p.X == dest.X) && (p.Y == dest.Y) {
 		generatePath(p, s)
-		s.draw()
-		os.Exit(1)
+		//s.draw()
 	}
 	// if (p.Parent != nil) && (checkRelativePos(p) == 2) {
 	// 	parent := p.Parent
@@ -165,7 +164,12 @@ func checkRelativePos(p utils.Point) int {
 	return hor + ver
 }
 
+var first bool = true
 func generatePath(p utils.Point, s *Scene) {
+	if first {
+		path = p
+		first = false
+	}
 	if (s.scene[p.X][p.Y] != 'A') && (s.scene[p.X][p.Y] != 'B') {
 		s.scene[p.X][p.Y] = '*'
 	}

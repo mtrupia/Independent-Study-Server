@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/dyzdyz010/Golang-AStar/utils"
-	"strconv"
 )
 
 type Scene struct {
@@ -11,9 +9,9 @@ type Scene struct {
 	scene      [][]byte
 }
 
-func (s *Scene) initScene(rows int, cols int) {
-	s.rows = rows
-	s.cols = cols
+func (s *Scene) initScene(p * Player) {
+	s.rows = 20
+	s.cols = 25
 
 	s.scene = make([][]byte, s.rows)
 	for i := 0; i < s.rows; i++ {
@@ -23,6 +21,13 @@ func (s *Scene) initScene(rows int, cols int) {
 				s.scene[i][j] = '#'
 			} else {
 				s.scene[i][j] = ' '
+			}
+			
+			// add walls if exists
+			if (i >= 1 && i <= s.rows-2) && (j >= 1 && j <= s.cols-2) {
+				if (p.Field[i-1][j-1].Building.Id >= 20) {
+					s.scene[i][j] = '#'
+				} 
 			}
 		}
 	}
@@ -42,11 +47,6 @@ func (s *Scene) draw() {
 				color += "B "		// Destination
 			case '*':
 				color += "* "		// Path
-				path += "["
-				path += strconv.Itoa(i)
-				path += ":"
-				path += strconv.Itoa(j)
-				path += "] "
 			case ' ':
 				color += "· "		// valid path
 			default:
@@ -57,30 +57,4 @@ func (s *Scene) draw() {
 	}
 	fmt.Printf("%s\n", color)
 	fmt.Printf("%s\n", path)
-}
-
-func (s *Scene) addWalls(num int) {
-	for i := 0; i < num; i++ {
-		ori := utils.GetRandInt(2)
-		length := utils.GetRandInt(16) + 1
-		row := utils.GetRandInt(s.rows)
-		col := utils.GetRandInt(s.cols)
-		switch ori {
-		case 0:
-			for i := 0; i < length; i++ {
-				if col+i >= s.cols {
-					break
-				}
-				s.scene[row][col+i] = '#'
-			}
-
-		case 1:
-			for i := 0; i < length; i++ {
-				if row+i >= s.rows {
-					break
-				}
-				s.scene[row+i][col] = '#'
-			}
-		}
-	}
 }
