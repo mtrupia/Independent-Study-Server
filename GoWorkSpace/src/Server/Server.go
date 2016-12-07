@@ -43,6 +43,7 @@ func main() {
 	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
 	go moveAll()
 	go attackAll()
+	go sendEnemies()
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
@@ -100,6 +101,28 @@ func handleRequest(conn net.Conn) {
 	}
 	
 	conn.Close()
+}
+func sendEnemies() {
+	var UPDATES, UPDATEUNIT int64
+	UPDATES = 1
+	UPDATEUNIT = 1000000
+	executionStamp := time.Now().UnixNano() / UPDATEUNIT
+	for { 
+		now := time.Now().UnixNano() / UPDATEUNIT
+		difference := now - executionStamp
+		interval := 1000 / UPDATES
+		if (difference > interval) {
+			// DO WORK
+			for i:=0;i<NUM_GAMES;i++ {
+				if !game[i].needsPlayer() {
+					go game[i].Player[0].sendEnemy()
+					go game[i].Player[1].sendEnemy()
+				}
+			}
+			
+			executionStamp = time.Now().UnixNano() / UPDATEUNIT
+		}
+	}
 }
 func moveAll() {
 	var UPDATES, UPDATEUNIT int64
@@ -275,6 +298,7 @@ type Player struct {
 	Field [HEIGHT][WIDTH]Board `json:"field"`
 	Enemies []Enemy `json:"enemies"`
 	Path	utils.Point
+	SendEnemy int
 }
 func (p * Player) towersAttack() {
 	for y:=0;y<HEIGHT;y++ {
@@ -296,6 +320,13 @@ func (p * Player) towersAttack() {
 				}
 			}
 		}
+	}
+}
+func (p * Player) sendEnemy() {
+	p.SendEnemy ++
+	if (p.SendEnemy == 10) {
+		p.SendEnemy = 0
+		p.buyEnemy(p, 1)
 	}
 }
 func (p * Player) moveEnemies() {
@@ -362,6 +393,7 @@ func (p * Player) create(pnts int, life int, gold int, specs []int) {
 		}
 	}
 	p.getPath()
+	p.SendEnemy = 0
 }
 func (p * Player) getPath(){
 	var scene Scene
