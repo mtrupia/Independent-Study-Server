@@ -238,12 +238,12 @@ func (e * Enemy) create(id int) {
 	e.Y = 0
 	e.DY = 0
 	e.Id = id
-	e.Health = 50
-	e.Damage = 10
+	e.Health = (id-39)*50
+	e.Damage = (id-39)*10
 }
 func (e * Enemy) damage(t Tower) {
 	e.Health -= t.Damage
-	print(e.Health,"\n")
+	//print(e.Health,"\n")
 }
 func (e Enemy) attack(t * Tower) {
 	t.damage(e)
@@ -326,7 +326,12 @@ func (p * Player) sendEnemy() {
 	p.SendEnemy ++
 	if (p.SendEnemy == 10) {
 		p.SendEnemy = 0
-		p.buyEnemy(p, 1)
+		
+		var e Enemy
+		e.create(40)
+		p.getEnemyDirection(&e)
+	
+		p.Enemies = append(p.Enemies, e)
 	}
 }
 func (p * Player) moveEnemies() {
@@ -400,6 +405,7 @@ func (p * Player) getPath(){
 	scene.initScene(p)
 	initAstar(&scene)
 	p.Path = findPath(&scene)
+	//parsePath(p.Path)
 }
 func parsePath(p utils.Point) {
 	// print path
@@ -444,6 +450,34 @@ func (p * Player) sellTower(x int, y int) {
 		p.getPath()
 	}
 }
+func (p * Player) buyEnemy(p1 * Player, id int) {
+	enemyCost := (id-39) * 10 * (((id-40)*5)+1)
+	
+	if p.Gold >= enemyCost {
+		var e Enemy
+		e.create(id)
+		p1.getEnemyDirection(&e)
+	
+		p1.Enemies = append(p1.Enemies, e)
+		
+		p.spendGold(enemyCost)
+		p.addPoints(enemyCost * 10)
+	}
+}
+func (p * Player) killEnemy(e Enemy, pnts bool) {
+	h := p.getEnemyId(e)
+
+	if h < len(p.Enemies) && h >= 0 {
+		if pnts {
+			enemyCost := (p.Enemies[h].Id-39) * 20 * (((p.Enemies[h].Id-40)*6)+1)
+	
+			p.addGold(enemyCost)
+			p.addPoints(enemyCost * 10)
+		}
+	
+		p.Enemies = append(p.Enemies[:h], p.Enemies[h+1:]...)
+	}
+}
 func (p * Player) addPoints(h int) {
 	p.Score += h
 }
@@ -476,33 +510,17 @@ func (p * Player) addSpecial(h int) {
 func (p * Player) useSpecial(h int) {
 	p.Specials = append(p.Specials[:h], p.Specials[h+1:]...)
 }
-func (p * Player) buyEnemy(p1 * Player, id int) {
-	enemyCost := id * 10
-	
-	if p.Gold >= enemyCost {
-		var e Enemy
-		e.create(id)
-		p1.getEnemyDirection(&e)
-	
-		p1.Enemies = append(p1.Enemies, e)
-		
-		p.spendGold(enemyCost)
-		p.addPoints(enemyCost * 10)
-	}
-}
-func (p * Player) killEnemy(e Enemy, pnts bool) {
-	h := p.getEnemyId(e)
 
-	if h < len(p.Enemies) && h >= 0 {
-		if pnts {
-			enemyCost := p.Enemies[h].Id * 20
-	
-			p.addGold(enemyCost)
-			p.addPoints(enemyCost * 10)
+func (p * Player) getTotalTowers() int {
+	var total int = 0
+	for y:=0;y<HEIGHT;y++ {
+		for x:=0;x<WIDTH;x++ {
+			if p.Field[y][x].towerExists() {
+				total ++
+			}
 		}
-	
-		p.Enemies = append(p.Enemies[:h], p.Enemies[h+1:]...)
 	}
+	return total
 }
 func (p * Player) getEnemyId(e Enemy) int {
 	for i := 0; i < len(p.Enemies); i++ {
@@ -512,7 +530,6 @@ func (p * Player) getEnemyId(e Enemy) int {
 	}
 	return 0
 }
-
 func assert(b bool, s string, t *testing.T) {
 	if b {
 		t.Error(s)
