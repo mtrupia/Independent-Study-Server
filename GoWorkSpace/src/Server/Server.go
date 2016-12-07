@@ -123,7 +123,7 @@ func moveAll() {
 }
 func attackAll() {
 	var UPDATES, UPDATEUNIT int64
-	UPDATES = 1
+	UPDATES = 2
 	UPDATEUNIT = 1000000
 	executionStamp := time.Now().UnixNano() / UPDATEUNIT
 	for { 
@@ -172,8 +172,8 @@ func (g * Game) needsPlayer() bool{
 }
 func (g * Game) make() {
 	var p1, p2 Player
-	p1.create(0,20,100000,[]int{})
-	p2.create(0, 20, 100000, []int{})
+	p1.create(0,20,100,[]int{})
+	p2.create(0, 20, 100, []int{})
 	g.Player[0] = &p1
 	g.Player[1] = &p2
 	g.Id[0] = 0
@@ -220,12 +220,13 @@ func (e * Enemy) create(id int) {
 }
 func (e * Enemy) damage(t Tower) {
 	e.Health -= t.Damage
+	print(e.Health,"\n")
 }
 func (e Enemy) attack(t * Tower) {
 	t.damage(e)
 }
 func (e * Enemy) isDead() bool {
-	return e.Health == 0
+	return e.Health <= 0
 }
 
 type Tower struct {
@@ -250,7 +251,7 @@ func (t Tower) attack(e * Enemy) {
 	e.damage(t)
 }
 func (t Tower) isDead() bool {
-	return (t.Health == 0)
+	return (t.Health <= 0)
 }
 
 type Board struct {
@@ -381,7 +382,7 @@ func (p Player) won(p1 Player) bool {
 	return p.Lives > p1.Lives
 }
 func (p Player) isDead() bool {
-	return (p.Lives == 0)
+	return (p.Lives <= 0)
 }
 func (p * Player) buyTower(id int, x int, y int, xt int, yt int) {
 	towerCost := (id-19) * 50
