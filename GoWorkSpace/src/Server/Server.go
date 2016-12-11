@@ -11,6 +11,7 @@ import (
 	"time"
 	"math"
 	"Server/utils"
+	"sync"
 )
 
 const (
@@ -28,6 +29,7 @@ const (
 )
 
 var game [NUM_GAMES]Game
+var mutex = &sync.Mutex{}
 
 func main() {
 	for i:=0; i < NUM_GAMES; i++ {
@@ -195,7 +197,7 @@ func (g * Game) needsPlayer() bool{
 }
 func (g * Game) make() {
 	var p1, p2 Player
-	p1.create(0,20,100,[]int{})
+	p1.create(0,20,100000000,[]int{})
 	p2.create(0, 20, 100, []int{})
 	g.Player[0] = &p1
 	g.Player[1] = &p2
@@ -231,6 +233,7 @@ type Enemy struct {
 	Id int `json:"id"`
 	Health int `json:"health"`
 	Damage int `json:"damage"`
+	Path	utils.Point
 }
 func (e * Enemy) create(id int) {
 	e.X = 0
@@ -329,6 +332,7 @@ func (p * Player) sendEnemy() {
 		
 		var e Enemy
 		e.create(40)
+		e.Path = p.Path
 		p.getEnemyDirection(&e)
 	
 		p.Enemies = append(p.Enemies, e)
@@ -362,20 +366,19 @@ func (p * Player) moveEnemies() {
 func (p Player) getEnemyDirection(e * Enemy) {
 	e.DX = 0
 	e.DY = 0
-	
+	mutex.Lock()
 	// get actual enemy location for board x and y
 	enemyX := e.X + (BLOCK_SIZE*11)
 	enemyY := e.Y
 	enemyX /= 32
 	enemyY /= 32
 	
-	coords := p.Path
-	for coords.X-1 != enemyY || coords.Y-1 != enemyX {
+	coords := e.Path
+	for (coords.X-1 != enemyY || coords.Y-1 != enemyX) && coords.Parent.Parent != nil {
 		coords = *coords.Parent
 	}
 	coords = *coords.Parent
 	
-	//print("[",coords.Y-1,":",coords.X-1,"], [",enemyX,":",enemyY,"]\n")
 	if enemyY < coords.X-1 {
 		e.DY = 1
 	} else if enemyY > coords.X-1 {
@@ -385,6 +388,7 @@ func (p Player) getEnemyDirection(e * Enemy) {
 	} else if enemyX > coords.Y-1 {
 		e.DX = -1
 	}
+	mutex.Unlock()
 }
 func (p * Player) create(pnts int, life int, gold int, specs []int) {
 	p.Score = pnts
@@ -401,10 +405,32 @@ func (p * Player) create(pnts int, life int, gold int, specs []int) {
 	p.SendEnemy = 0
 }
 func (p * Player) getPath(){
+	mutex.Lock()
 	var scene Scene
 	scene.initScene(p)
-	initAstar(&scene)
+	
+	initAstar(&scene, 1, 12)
 	p.Path = findPath(&scene)
+	
+	size := len(p.Enemies)
+	if size != 0 {
+		for i:= 0; i < size; i++ {
+			e := &p.Enemies[i]
+			enemyX := e.X + (BLOCK_SIZE*11)
+			enemyY := e.Y
+			enemyX /= 32
+			enemyY /= 32
+			enemyX += e.DX
+			enemyY += e.DY
+			
+			scene.initScene(p)
+			initAstar(&scene, enemyY+1, enemyX+1)
+			
+			e.Path = findPath(&scene)
+		}
+	}
+	
+	mutex.Unlock()
 	//parsePath(p.Path)
 }
 func parsePath(p utils.Point) {
@@ -456,6 +482,7 @@ func (p * Player) buyEnemy(p1 * Player, id int) {
 	if p.Gold >= enemyCost {
 		var e Enemy
 		e.create(id)
+		e.Path = p1.Path
 		p1.getEnemyDirection(&e)
 	
 		p1.Enemies = append(p1.Enemies, e)

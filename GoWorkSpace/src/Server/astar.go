@@ -15,19 +15,19 @@ func setOrig(s *Scene) {
 }
 
 // Set the destination point '
-func setDest(s *Scene) {
-	dest = utils.Point{1, 12, 0, 0, 0, nil}
+func setDest(s *Scene, x int, y int) {
+	dest = utils.Point{x, y, 0, 0, 0, nil}
 	s.scene[dest.X][dest.Y] = 'B'
 }
 
 // Init origin, destination. Put the origin point into the openlist by the way
-func initAstar(s *Scene) {
+func initAstar(s *Scene, x int, y int) {
 	openList = nil
 	closeList = nil
 	first = true
 
 	setOrig(s)
-	setDest(s)
+	setDest(s, x, y)
 	openList = append(openList, origin)
 }
 
