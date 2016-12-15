@@ -203,8 +203,10 @@ func (g * Game) needsPlayer() bool{
 }
 func (g * Game) make() {
 	var p1, p2 Player
-	p1.create(0,20,200,[]int{})
-	p2.create(0, 20,200, []int{})
+	//p1.create(0,20,200,[]int{})
+	//p2.create(0, 20,200, []int{})
+	p1.create(0,20,200000,[]int{})
+	p2.create(0, 20,200000, []int{})
 	g.Player[0] = &p1
 	g.Player[1] = &p2
 	g.Id[0] = 0
@@ -620,7 +622,9 @@ func (p * Player) killEnemy(e Enemy, pnts bool) {
 		}
 		
 		mutex2.Lock()
-		p.Enemies = append(p.Enemies[:h], p.Enemies[h+1:]...)
+		if h < len(p.Enemies) {
+			p.Enemies = append(p.Enemies[:h], p.Enemies[h+1:]...)
+		}
 		mutex2.Unlock()
 	}
 }
@@ -639,8 +643,10 @@ func (p * Player) loseLife(e Enemy) {
 	p.killEnemy(e, false)
 	
 	if p.Lives <= 0 { 
+		mutex2.Lock()
 		getGameByPlayer(p).Player[0].create(0,20,200,[]int{})
 		getGameByPlayer(p).Player[1].create(0,20,200,[]int{})
+		mutex2.Unlock()
 	}
 }
 func (p * Player) addGold(h int) {
