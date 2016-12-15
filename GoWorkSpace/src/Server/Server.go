@@ -203,8 +203,8 @@ func (g * Game) needsPlayer() bool{
 }
 func (g * Game) make() {
 	var p1, p2 Player
-	p1.create(0,20,1000,[]int{})
-	p2.create(0, 20, 1000, []int{})
+	p1.create(0,20,200,[]int{})
+	p2.create(0, 20,200, []int{})
 	g.Player[0] = &p1
 	g.Player[1] = &p2
 	g.Id[0] = 0
@@ -346,14 +346,14 @@ func (p * Player) towersAttack() {
 					x2 := enemy.X + (BLOCK_SIZE*11) + BLOCK_SIZE/2
 					y1 := y*BLOCK_SIZE + BLOCK_SIZE/2
 					y2 := enemy.Y + BLOCK_SIZE/2
-					if tower.Building.Id == 28 {
+					if tower.Building.Id == 25 {
 						if math.Sqrt(math.Pow((float64) (x2-x1),2)+math.Pow((float64) (y2-y1),2)) < BLOCK_SIZE*10 {
 							tower.Building.attack(enemy)
 							if enemy.isDead() {
 								p.killEnemy(p.Enemies[i], true)
 							}
 						}
-					} else if tower.Building.Id == 27 {
+					} else if tower.Building.Id == 24 {
 						if math.Sqrt(math.Pow((float64) (x2-x1),2)+math.Pow((float64) (y2-y1),2)) < BLOCK_SIZE+10 {
 							enemy.Health -= 500
 							if enemy.isDead() {
@@ -391,12 +391,6 @@ func (p * Player) sendEnemy() {
 	p.SendEnemy ++
 	if (p.SendEnemy == 10) {
 		p.SendEnemy = 0
-		
-		var e Enemy
-		e.create(40)
-		e.Path = p.Path
-		p.getEnemyDirection(&e)
-		
 		p.buyEnemy(p, 40, false)
 	}
 }
@@ -512,6 +506,7 @@ func (p * Player) create(pnts int, life int, gold int, specs []int) {
 			p.Field[y][x].Y = y*BLOCK_SIZE
 		}
 	}
+	p.Enemies = []Enemy {}
 	p.getPath()
 	p.SendEnemy = 0
 	p.EnemyLives = 20
@@ -590,7 +585,7 @@ func (p * Player) sellTower(x int, y int, gold bool) {
 func (p * Player) buyEnemy(p1 * Player, id int, pnts bool) {
 	enemyCost := ((id-39) * 25) * ((id-40) + 1)
 	
-	if p.Gold >= enemyCost {
+	if p.Gold >= enemyCost && pnts{
 		var e Enemy
 		e.create(id)
 		e.Path = p1.Path
@@ -600,10 +595,17 @@ func (p * Player) buyEnemy(p1 * Player, id int, pnts bool) {
 		p1.Enemies = append(p1.Enemies, e)
 		mutex2.Unlock();
 		
-		if pnts {
-			p.spendGold(enemyCost)
-			p.addPoints(enemyCost * 10)
-		}
+		p.spendGold(enemyCost)
+		p.addPoints(enemyCost * 10)
+	} else if !pnts{
+		var e Enemy
+		e.create(id)
+		e.Path = p1.Path
+		p1.getEnemyDirection(&e)
+		
+		mutex2.Lock();
+		p1.Enemies = append(p1.Enemies, e)
+		mutex2.Unlock();
 	}
 }
 func (p * Player) killEnemy(e Enemy, pnts bool) {
@@ -637,7 +639,8 @@ func (p * Player) loseLife(e Enemy) {
 	p.killEnemy(e, false)
 	
 	if p.Lives <= 0 { 
-		getGameByPlayer(p).make()
+		getGameByPlayer(p).Player[0].create(0,20,200,[]int{})
+		getGameByPlayer(p).Player[1].create(0,20,200,[]int{})
 	}
 }
 func (p * Player) addGold(h int) {
